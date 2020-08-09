@@ -119,13 +119,31 @@ report_version(${PROJECT_NAME} ${VERSION})
 include(FindAnyProject)
 find_anyproject(LIBXML2 REQUIRED)
 find_anyproject(LIBXSLT REQUIRED)
-find_anyproject(ICONV REQUIRED)
-find_anyproject(ZLIB REQUIRED)
 
-set(BUILD_INCLUDES "--include-dirs=${LIBXML2_INCLUDE_DIRS}\;${LIBXSLT_INCLUDE_DIRS}\;${ICONV_INCLUDE_DIRS}")
-set(BUILD_LIBRARIES "--library-dirs=$<TARGET_LINKER_FILE_DIR:${LIBXSLT_LIBRARIES}>\;$<TARGET_LINKER_FILE_DIR:${LIBXML2_LIBRARIES}>\;$<TARGET_LINKER_FILE_DIR:${ICONV_LIBRARIES}>\;$<TARGET_LINKER_FILE_DIR:${ZLIB_LIBRARIES}>")
+if(OSX_FRAMEWORK)
+    macro(get_lib_path_from_include PATH LIB_DIR)
+        get_filename_component(FW_DIR "${PATH}" PATH)
+        get_filename_component(${LIB_DIR} "${FW_DIR}" PATH)
+    endmacro()
 
-get_filename_component(LIB_DIR ${LIBXML2_INCLUDE_DIRS} DIRECTORY)
+    set(LIBXML2_FRAMEWORK libxml2)
+    get_lib_path_from_include(${LIBXML2_INCLUDE_DIRS} LIBXML2_LIBRARY_DIR)
+    set(LIBXML2_FRAMEWORK_DIRS ${LIBXML2_LIBRARY_DIR})
+
+    set(LIBXSLT_FRAMEWORK libxslt)
+    get_lib_path_from_include(${LIBXSLT_INCLUDE_DIRS} LIBXSLT_LIBRARY_DIR)
+    set(LIBXSLT_FRAMEWORK_DIRS ${LIBXSLT_LIBRARY_DIR})
+
+    set(LIBEXSLT_FRAMEWORK libexslt)
+    set(LIBEXSLT_FRAMEWORK_DIRS ${LIBXSLT_LIBRARY_DIR})
+else()
+    find_anyproject(ICONV REQUIRED)
+    find_anyproject(ZLIB REQUIRED)
+
+    set(BUILD_INCLUDES "--include-dirs=${LIBXML2_INCLUDE_DIRS}\;${LIBXSLT_INCLUDE_DIRS}\;${ICONV_INCLUDE_DIRS}")
+    set(BUILD_LIBRARIES "--library-dirs=$<TARGET_LINKER_FILE_DIR:${LIBXSLT_LIBRARIES}>\;$<TARGET_LINKER_FILE_DIR:${LIBXML2_LIBRARIES}>\;$<TARGET_LINKER_FILE_DIR:${ICONV_LIBRARIES}>\;$<TARGET_LINKER_FILE_DIR:${ZLIB_LIBRARIES}>")
+endif()
+
 if(OSX_FRAMEWORK)
     set(FLAGS "ARCHFLAGS=-arch x86_64")
 elseif(WIN32)
@@ -155,6 +173,7 @@ else()
     set(FLAGS "NextGIS=TRUE")
 endif()
 
+
 # Download tarbal
 set(OUT_DIR_NAME ${PROJECT_NAME}-${VERSION})
 set(OUT_NAME "${OUT_DIR_NAME}.tar.gz")
@@ -172,6 +191,8 @@ if(NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/${OUT_DIR_NAME})
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf ${CMAKE_CURRENT_BINARY_DIR}/${OUT_NAME} WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 
+configure_file(${CMAKE_SOURCE_DIR}/cmake/setupinfo.py.in ${CMAKE_CURRENT_BINARY_DIR}/${OUT_DIR_NAME}/setupinfo.py IMMEDIATE @ONLY)
+
 macro(build_py ver)
                
     add_custom_target(build_py${ver} ALL
@@ -181,8 +202,10 @@ macro(build_py ver)
         VERBATIM
     )
         
-    add_dependencies(build_py${ver} ${LIBXML2_LIBRARIES})
-    
+    if(WIN32)
+        add_dependencies(build_py${ver} ${LIBXML2_LIBRARIES} ${LIBXSLT_LIBRARIES})
+    endif()
+
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         set(SETUP_OPTS ${SETUP_OPTS} --no-compile --single-version-externally-managed --record=rekord.txt --prefix=${CMAKE_CURRENT_BINARY_DIR}/inst_tmp)
     elseif(WIN32)
